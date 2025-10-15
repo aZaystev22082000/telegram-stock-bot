@@ -1,0 +1,25 @@
+# Бинарные файлы
+telegram-bot
+bot
+main
+*.exe
+
+# Конфиги с секретами
+.env
+config.yml
+config.json
+
+# Логи
+*.log
+
+# Go
+/bin/
+/pkg/
+
+# IDE
+.vscode/
+.idea/
+
+# Системные
+.DS_Store
+thumbs.db

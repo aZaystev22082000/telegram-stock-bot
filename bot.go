@@ -121,14 +121,6 @@ func runBot() {
 
 		log.Printf("[%s] %s", update.Message.From.UserName, update.Message.Text)
 
-		//if update.Message.From.UserName == "sgoreela" {
-		//	msg := tgbotapi.NewMessage(update.Message.Chat.ID, "🚫 Вы заблокированы, идите нахуй")
-		//	if _, err := bot.Send(msg); err != nil {
-		//		log.Printf("Ошибка отправки сообщения: %v", err)
-		//	}
-		//	continue // Прерываем обработку для этого пользователя
-		//}
-
 		msg := tgbotapi.NewMessage(update.Message.Chat.ID, "")
 
 		if update.Message.IsCommand() {

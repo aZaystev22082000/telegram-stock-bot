@@ -1,14 +1,18 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"time"
+
+	_ "github.com/go-sql-driver/mysql" // ДОБАВЛЕНО: импорт MySQL драйвера
 )
 
-// Структура для парсинга ответа от GLOBAL_QUOTE
+// Структуры для Alpha Vantage API
 type GlobalQuoteResponse struct {
 	GlobalQuote struct {
 		Symbol           string `json:"01. symbol"`
@@ -24,21 +28,40 @@ type GlobalQuoteResponse struct {
 	} `json:"Global Quote"`
 }
 
-// Структура для ошибок API
 type APIErrorResponse struct {
 	ErrorMessage string `json:"Error Message"`
 	Information  string `json:"Information"`
 	Note         string `json:"Note"`
 }
 
-// Создание HTTP-клиента с таймаутами
+// ДОБАВЛЕНО: глобальная переменная для подключения к БД
+var db *sql.DB
+
+// ДОБАВЛЕНО: функция инициализации базы данных
+func initDB() {
+	var err error
+	dbSource := "root:Froliner564@tcp(localhost:3306)/sys"
+
+	db, err = sql.Open("mysql", dbSource)
+	if err != nil {
+		log.Fatalf("Ошибка подключения к базе данных: %v", err)
+	}
+
+	err = db.Ping()
+	if err != nil {
+		log.Fatalf("Ошибка ping базы данных: %v", err)
+	}
+
+	log.Println("✅ Успешное подключение к базе данных")
+}
+
+// Существующие функции для работы с API
 func createHTTPClient() *http.Client {
 	return &http.Client{
 		Timeout: 30 * time.Second,
 	}
 }
 
-// Получение цены акции с повторами при ошибках
 func getStockPrice(symbol, apiKey string, maxRetries int) (string, error) {
 	client := createHTTPClient()
 
@@ -52,7 +75,6 @@ func getStockPrice(symbol, apiKey string, maxRetries int) (string, error) {
 
 		fmt.Printf("Ошибка (попытка %d): %v\n", attempt, err)
 
-		// Если это не последняя попытка, ждем перед повторением
 		if attempt < maxRetries {
 			backoff := time.Duration(attempt) * 2 * time.Second
 			fmt.Printf("Ждем %v перед повторной попыткой...\n", backoff)
@@ -63,51 +85,30 @@ func getStockPrice(symbol, apiKey string, maxRetries int) (string, error) {
 	return "", fmt.Errorf("не удалось получить цену после %d попыток", maxRetries)
 }
 
-// Основная функция получения данных от API
 func fetchStockPrice(client *http.Client, symbol, apiKey string) (string, error) {
-	// Формируем URL для GLOBAL_QUOTE
 	url := fmt.Sprintf("https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=%s&apikey=%s", symbol, apiKey)
 
-	// Создаем запрос
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return "", fmt.Errorf("ошибка создания запроса: %v", err)
 	}
 
-	// Выполняем запрос
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("ошибка при выполнении запроса: %v", err)
 	}
 	defer resp.Body.Close()
 
-	// Читаем тело ответа
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", fmt.Errorf("ошибка чтения ответа: %v", err)
 	}
 
-	// Сначала проверяем на ошибки API
-	//var apiError APIErrorResponse
-	//if err := json.Unmarshal(body, &apiError); err == nil {
-	//if apiError.ErrorMessage != "" {
-	//return "", fmt.Errorf("ошибка API: %s", apiError.ErrorMessage)
-	//}
-	//if apiError.Information != "" {
-	//return "", fmt.Errorf("информация от API: %s", apiError.Information)
-	//}
-	//if apiError.Note != "" {
-	//return "", fmt.Errorf("примечание от API: %s", apiError.Note)
-	//}
-	//}
-
-	// Парсим основной ответ
 	var quoteResponse GlobalQuoteResponse
 	if err := json.Unmarshal(body, &quoteResponse); err != nil {
 		return "", fmt.Errorf("ошибка разбора JSON: %v\nТело ответа: %s", err, string(body))
 	}
 
-	// Проверяем, есть ли цена в ответе
 	if quoteResponse.GlobalQuote.Price == "" {
 		return "", fmt.Errorf("цена не найдена в ответе API\nПолный ответ: %s", string(body))
 	}
@@ -115,7 +116,7 @@ func fetchStockPrice(client *http.Client, symbol, apiKey string) (string, error)
 	return quoteResponse.GlobalQuote.Price, nil
 }
 
-// Функция для тестирования нескольких тикеров
+// ДОБАВЛЕНО: функция для тестирования нескольких тикеров
 func testMultipleTickers(apiKey string) {
 	tickers := []string{
 		"SBER.ME", // Сбербанк (Московская биржа)
@@ -134,12 +135,14 @@ func testMultipleTickers(apiKey string) {
 			fmt.Printf("Текущая цена %s: %s\n", ticker, price)
 		}
 
-		// Пауза между запросами чтобы не превысить лимиты
 		time.Sleep(1 * time.Second)
 	}
 }
 
 func main() {
+	// ДОБАВЛЕНО: инициализация базы данных
+	initDB()
+	runBot()
 	apiKey := "Z33Q2SGS87R4NCV9"
 
 	fmt.Println("=== Получение котировок акций ===")
